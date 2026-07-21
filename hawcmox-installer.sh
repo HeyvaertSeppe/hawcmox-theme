@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# HAWCMOX Proxmox UI Customization Installer (Modern Grey)
-# Visual customization only. Replaces logo, hides version text, modernizes CSS.
+# HAWCMOX Proxmox UI Manager
+# Unified script to Install or Remove the custom HAWC-Servers theme.
 
 set -eu
 
@@ -11,10 +11,19 @@ DEFAULT_LOGO_URL="https://raw.githubusercontent.com/HeyvaertSeppe/hawcmox-theme/
 DATA_DIR="/usr/local/share/hawcmox"
 PATCH_SCRIPT="/usr/local/bin/hawcmox-patch.sh"
 APT_HOOK="/etc/apt/apt.conf.d/99hawcmox-theme"
-
 LOGO_FILE="$DATA_DIR/hawcmox_logo.png"
 CSS_FILE="$DATA_DIR/hawcmox.css"
 CONFIG_FILE="$DATA_DIR/config"
+
+if [ "$(id -u)" -ne 0 ]; then
+    printf '%s\n' "ERROR: This script must be run as root."
+    exit 1
+fi
+
+if [ ! -d "/usr/share/pve-manager" ]; then
+    printf '%s\n' "ERROR: This does not appear to be a Proxmox VE node."
+    exit 1
+fi
 
 ask_value() {
     prompt="$1"
@@ -71,54 +80,44 @@ download_file() {
 
     if [ ! -s "$temporary_file" ]; then
         rm -f "$temporary_file"
-        printf '%s\n' "ERROR: The downloaded file is empty. Check your URL."
+        printf '%s\n' "ERROR: Download failed. Check your URL."
         exit 1
     fi
     mv "$temporary_file" "$destination"
 }
 
-if [ "$(id -u)" -ne 0 ]; then
-    printf '%s\n' "ERROR: This script must be run as root."
-    exit 1
-fi
+install_theme() {
+    printf '\n============================================================\n' >&2
+    printf ' HAWCMOX INSTALLER\n' >&2
+    printf '============================================================\n' >&2
 
-if [ ! -d "/usr/share/pve-manager" ]; then
-    printf '%s\n' "ERROR: This does not appear to be a Proxmox VE node."
-    exit 1
-fi
+    BRAND_TITLE="$(ask_value "Browser title/brand name" "$DEFAULT_TITLE")"
+    LOGO_URL="$(ask_value "Direct URL of the PNG logo" "$DEFAULT_LOGO_URL")"
 
-printf '\n============================================================\n' >&2
-printf ' HAWCMOX Proxmox UI Installer\n' >&2
-printf '============================================================\n' >&2
+    printf '\n' >&2
+    if ask_yes_no "Reapply automatically after package updates?" "y"; then
+        INSTALL_APT_HOOK="yes"
+    else
+        INSTALL_APT_HOOK="no"
+    fi
 
-BRAND_TITLE="$(ask_value "Browser title/brand name" "$DEFAULT_TITLE")"
-LOGO_URL="$(ask_value "Direct URL of the PNG logo" "$DEFAULT_LOGO_URL")"
+    if ! ask_yes_no "Apply these changes now?" "y"; then
+        printf '%s\n' "Installation cancelled."
+        exit 0
+    fi
 
-printf '\n' >&2
-if ask_yes_no "Reapply automatically after package updates?" "y"; then
-    INSTALL_APT_HOOK="yes"
-else
-    INSTALL_APT_HOOK="no"
-fi
+    printf '\n[1/5] Creating directories...\n'
+    mkdir -p "$DATA_DIR"
+    chmod 755 "$DATA_DIR"
 
-if ! ask_yes_no "Apply these changes now?" "y"; then
-    printf '%s\n' "Installation cancelled."
-    exit 0
-fi
+    printf '[2/5] Downloading custom logo...\n'
+    download_file "$LOGO_URL" "$LOGO_FILE"
+    chmod 644 "$LOGO_FILE"
 
-printf '\n[1/5] Creating directories...\n'
-mkdir -p "$DATA_DIR"
-chmod 755 "$DATA_DIR"
-
-printf '[2/5] Downloading custom logo...\n'
-download_file "$LOGO_URL" "$LOGO_FILE"
-chmod 644 "$LOGO_FILE"
-
-printf '[3/5] Generating modern grey CSS theme...\n'
-cat > "$CSS_FILE" <<'EOF_CSS'
+    printf '[3/5] Generating modern grey CSS theme...\n'
+    cat > "$CSS_FILE" <<'EOF_CSS'
 /* HAWCMOX - Modern Slate Proxmox Theme */
 
-/* Modern rounded corners and subtle shadows for windows */
 .x-panel, .x-window, .x-panel-default, .x-window-default {
     border-radius: 8px !important;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
@@ -129,7 +128,6 @@ cat > "$CSS_FILE" <<'EOF_CSS'
     border-radius: 8px 8px 0 0 !important;
 }
 
-/* Softer buttons with smooth transitions */
 .x-btn {
     border-radius: 6px !important;
     transition: opacity 0.2s ease-in-out !important;
@@ -143,7 +141,7 @@ cat > "$CSS_FILE" <<'EOF_CSS'
     border-radius: 4px !important;
 }
 
-/* Force custom logo via CSS to bypass SVG file format conflicts */
+/* Force custom logo and bypass SVG */
 .proxmox-logo {
     background-image: url('/pve2/images/hawcmox_logo.png') !important;
     background-size: contain !important;
@@ -152,11 +150,11 @@ cat > "$CSS_FILE" <<'EOF_CSS'
     width: 150px !important; 
 }
 EOF_CSS
-chmod 644 "$CSS_FILE"
-printf '%s\n' "$BRAND_TITLE" > "$CONFIG_FILE"
+    chmod 644 "$CSS_FILE"
+    printf '%s\n' "$BRAND_TITLE" > "$CONFIG_FILE"
 
-printf '[4/5] Creating persistent patcher...\n'
-cat > "$PATCH_SCRIPT" <<'EOF_PATCH'
+    printf '[4/5] Creating persistent patcher...\n'
+    cat > "$PATCH_SCRIPT" <<'EOF_PATCH'
 #!/bin/sh
 set -eu
 
@@ -182,15 +180,12 @@ if [ -f "$TEMPLATE_FILE" ]; then
     escaped_title="$(escape_sed_replacement "$BRAND_TITLE")"
     sed -i "s|<title>[^<]*</title>|<title>${escaped_title}</title>|" "$TEMPLATE_FILE"
     
-    # Inject CSS
     if ! grep -q 'css/hawcmox.css' "$TEMPLATE_FILE"; then
         sed -i 's|</head>|    <link rel="stylesheet" type="text/css" href="/pve2/css/hawcmox.css">\n</head>|' "$TEMPLATE_FILE"
     fi
 
-    # Inject JavaScript Observer to instantly hide "Virtual Environment X.X.X"
     if ! grep -q 'HAWCMOX_TEXT_REMOVAL' "$TEMPLATE_FILE"; then
         cat << 'EOF_JS' >> "$TEMPLATE_FILE"
-
 <!-- HAWCMOX_TEXT_REMOVAL -->
 <script type="text/javascript">
 document.addEventListener("DOMContentLoaded", function() {
@@ -212,25 +207,73 @@ if command -v systemctl >/dev/null 2>&1; then
     systemctl restart pveproxy.service >/dev/null 2>&1 || true
 fi
 EOF_PATCH
-chmod 755 "$PATCH_SCRIPT"
+    chmod 755 "$PATCH_SCRIPT"
 
-printf '[5/5] Applying customization...\n'
-if [ "$INSTALL_APT_HOOK" = "yes" ]; then
-    cat > "$APT_HOOK" <<'EOF_HOOK'
+    printf '[5/5] Applying customization...\n'
+    if [ "$INSTALL_APT_HOOK" = "yes" ]; then
+        cat > "$APT_HOOK" <<'EOF_HOOK'
 DPkg::Post-Invoke { "/usr/local/bin/hawcmox-patch.sh || true"; };
 EOF_HOOK
-    chmod 644 "$APT_HOOK"
-else
-    rm -f "$APT_HOOK"
-fi
+        chmod 644 "$APT_HOOK"
+    else
+        rm -f "$APT_HOOK"
+    fi
 
-"$PATCH_SCRIPT"
+    "$PATCH_SCRIPT"
+
+    printf '\n============================================================\n'
+    printf ' HAWCMOX INSTALLATION COMPLETE\n'
+    printf '============================================================\n\n'
+    printf 'IMPORTANT: The backend service has been reloaded.\n'
+    printf 'Open Proxmox in an Incognito/Private window to bypass your cache and see the changes.\n'
+}
+
+uninstall_theme() {
+    printf '\n============================================================\n'
+    printf ' HAWCMOX UNINSTALLER\n'
+    printf '============================================================\n'
+    
+    printf '[1/3] Removing HAWCMOX files and APT hooks...\n'
+    rm -rf "/usr/local/share/hawcmox"
+    rm -f "/usr/local/bin/hawcmox-patch.sh"
+    rm -f "/etc/apt/apt.conf.d/99hawcmox-theme"
+    rm -f "/usr/share/pve-manager/css/hawcmox.css"
+    rm -f "/usr/share/pve-manager/images/hawcmox_logo.png"
+
+    printf '[2/3] Restoring original Proxmox HTML templates...\n'
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install --reinstall pve-manager -y >/dev/null 2>&1
+
+    printf '[3/3] Restarting Proxmox web interface...\n'
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl restart pveproxy.service >/dev/null 2>&1 || true
+    fi
+
+    printf '\n============================================================\n'
+    printf ' REVERT COMPLETE\n'
+    printf '============================================================\n\n'
+    printf 'The server is now back to stock Proxmox defaults.\n'
+    printf 'Open Proxmox in an Incognito/Private window to verify.\n'
+}
 
 printf '\n============================================================\n'
-printf ' HAWCMOX CUSTOMIZATION COMPLETE\n'
-printf '============================================================\n\n'
-printf 'IMPORTANT: The backend service has been reloaded.\n'
-printf 'To see the changes, you MUST clear your browser cache or perform a hard refresh:\n'
-printf '  Windows/Linux: Ctrl + F5\n'
-printf '  macOS:         Cmd + Shift + R\n'
-printf '\nOr open the Proxmox UI in a Private/Incognito window to verify.\n'
+printf ' HAWCMOX UI MANAGER\n'
+printf '============================================================\n'
+printf ' 1) Install / Update HAWCMOX Theme\n'
+printf ' 2) Remove HAWCMOX Theme (Restore Default)\n'
+printf ' 3) Exit\n'
+printf '============================================================\n'
+
+printf 'Select an option [1-3]: ' >&2
+if [ -r /dev/tty ]; then
+    IFS= read -r choice < /dev/tty || choice=""
+else
+    choice=""
+fi
+
+case "$choice" in
+    1) install_theme ;;
+    2) uninstall_theme ;;
+    3) exit 0 ;;
+    *) printf 'Invalid choice. Exiting.\n'; exit 1 ;;
+esac
