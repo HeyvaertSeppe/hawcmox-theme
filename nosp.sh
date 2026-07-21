@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# HAWCMOX Proxmox UI Manager v5.9 - For Proxmox 8+ and 9.2.2+
+# HAWCMOX Proxmox UI Manager v6.0 - For Proxmox 8+ and 9.2.2+
 # Unified script to Install or Remove the custom theme and remove nags.
 
 set -eu
@@ -324,12 +324,6 @@ a:has(img[src*="proxmox_logo"]) {
 }
 
 .x-btn[data-hawc-action="system-report"] { display: none !important; }
-
-.x-btn[data-hawc-action="remove-sub"] {
-    opacity: 0.4 !important;
-    pointer-events: none !important;
-    filter: grayscale(100%) !important;
-}
 
 .x-btn[data-hawc-action]:hover {
     filter: brightness(1.12) !important;
@@ -822,8 +816,7 @@ EOF_CSS
         { re: /^console$/i, action: 'console' },
         { re: /^shell$/i, action: 'shell' },
         { re: /^>_\s*console$/i, action: 'console' },
-        { re: /^system\s*report$/i, action: 'system-report' },
-        { re: /^remove\s*subscription$/i, action: 'remove-sub' }
+        { re: /^system\s*report$/i, action: 'system-report' }
     ];
 
     function processTextNode(node) {
