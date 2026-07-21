@@ -1,11 +1,8 @@
 #!/bin/sh
 
-# HAWCMOX Proxmox customization installer
-# Visual customization only — no licensing or repository modifications.
-#
-# Run as root:
-#   chmod +x hawcmox-installer.sh
-#   ./hawcmox-installer.sh
+# HAWCMOX Proxmox UI customization installer
+# Visual customization only.
+# Does not modify licensing, subscriptions, or repositories.
 
 set -eu
 
@@ -34,8 +31,10 @@ ask_value() {
     prompt="$1"
     default_value="$2"
 
-    printf '%s [%s]: ' "$prompt" "$default_value"
-    IFS= read -r answer || true
+    # Send the prompt to stderr so command substitution captures only
+    # the value returned by this function.
+    printf '%s [%s]: ' "$prompt" "$default_value" >&2
+    IFS= read -r answer || answer=""
 
     if [ -z "$answer" ]; then
         answer="$default_value"
@@ -50,12 +49,12 @@ ask_yes_no() {
 
     while :; do
         if [ "$default_answer" = "y" ]; then
-            printf '%s [Y/n]: ' "$prompt"
+            printf '%s [Y/n]: ' "$prompt" >&2
         else
-            printf '%s [y/N]: ' "$prompt"
+            printf '%s [y/N]: ' "$prompt" >&2
         fi
 
-        IFS= read -r answer || true
+        IFS= read -r answer || answer=""
 
         if [ -z "$answer" ]; then
             answer="$default_answer"
@@ -69,14 +68,10 @@ ask_yes_no() {
                 return 1
                 ;;
             *)
-                printf '%s\n' "Please answer yes or no."
+                printf '%s\n' "Please answer yes or no." >&2
                 ;;
         esac
     done
-}
-
-escape_sed_replacement() {
-    printf '%s' "$1" | sed 's/[\/&|\\]/\\&/g'
 }
 
 download_file() {
@@ -86,23 +81,37 @@ download_file() {
 
     rm -f "$temporary_file"
 
+    case "$url" in
+        http://*|https://*)
+            ;;
+        *)
+            printf '%s\n' "ERROR: The logo URL must start with http:// or https://"
+            exit 1
+            ;;
+    esac
+
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --location --silent --show-error \
+        curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
             "$url" \
             --output "$temporary_file"
     elif command -v wget >/dev/null 2>&1; then
-        wget --quiet \
+        wget \
+            --quiet \
             --output-document="$temporary_file" \
             "$url"
     else
         printf '%s\n' "ERROR: Neither curl nor wget is installed."
-        printf '%s\n' "Install one of them and run this script again."
+        printf '%s\n' "Install curl or wget and run this script again."
         exit 1
     fi
 
     if [ ! -s "$temporary_file" ]; then
         rm -f "$temporary_file"
-        printf '%s\n' "ERROR: The downloaded logo is empty."
+        printf '%s\n' "ERROR: The downloaded logo file is empty."
         exit 1
     fi
 
@@ -124,13 +133,19 @@ if [ ! -d "/usr/share/pve-manager" ]; then
 fi
 
 printf '%s\n' "Enter the desired customization settings."
+printf '%s\n' "Press Enter to accept a value shown between brackets."
 printf '\n'
 
 BRAND_TITLE="$(ask_value "Browser title/brand name" "$DEFAULT_TITLE")"
-LOGO_URL="$(ask_value "Direct URL of the PNG logo" "$DEFAULT_LOGO_URL")"
-
 printf '\n'
-if ask_yes_no "Reapply the customization automatically after package updates?" "y"; then
+
+LOGO_URL="$(ask_value "Direct URL of the PNG logo" "$DEFAULT_LOGO_URL")"
+printf '\n\n'
+
+if ask_yes_no \
+    "Reapply the customization automatically after package updates?" \
+    "y"
+then
     INSTALL_APT_HOOK="yes"
 else
     INSTALL_APT_HOOK="no"
@@ -238,14 +253,16 @@ EOF_CSS
 
 chmod 644 "$CSS_FILE"
 
-# Save the selected title for the persistent patch script.
-printf 'BRAND_TITLE=%s\n' "$BRAND_TITLE" > "$CONFIG_FILE"
-chmod 600 "$CONFIG_FILE"
+# Save the selected browser title.
+printf '%s\n' "$BRAND_TITLE" > "$CONFIG_FILE"
+chmod 644 "$CONFIG_FILE"
 
 printf '%s\n' "[4/5] Creating the persistent customization patcher..."
 
 cat > "$PATCH_SCRIPT" <<'EOF_PATCH'
 #!/bin/sh
+
+# Reapplies the HAWCMOX visual customization after Proxmox updates.
 
 set -eu
 
@@ -260,8 +277,8 @@ TEMPLATE_FILE="/usr/share/pve-manager/index.html.tpl"
 
 BRAND_TITLE="HAWCMOX"
 
-if [ -f "$CONFIG_FILE" ]; then
-    configured_title="$(sed -n 's/^BRAND_TITLE=//p' "$CONFIG_FILE" | head -n 1)"
+if [ -s "$CONFIG_FILE" ]; then
+    configured_title="$(head -n 1 "$CONFIG_FILE")"
 
     if [ -n "$configured_title" ]; then
         BRAND_TITLE="$configured_title"
@@ -278,17 +295,23 @@ if [ ! -d "/usr/share/pve-manager" ]; then
 fi
 
 if [ -f "$SOURCE_LOGO" ]; then
-    mkdir -p "$(dirname "$TARGET_LOGO")"
-    cp -f "$SOURCE_LOGO" "$TARGET_LOGO"
-    chmod 644 "$TARGET_LOGO"
+    if [ -d "$(dirname "$TARGET_LOGO")" ]; then
+        cp -f "$SOURCE_LOGO" "$TARGET_LOGO"
+        chmod 644 "$TARGET_LOGO"
+    else
+        printf '%s\n' "HAWCMOX: Proxmox image directory was not found."
+    fi
 else
     printf '%s\n' "HAWCMOX: Source logo was not found."
 fi
 
 if [ -f "$SOURCE_CSS" ]; then
-    mkdir -p "$(dirname "$TARGET_CSS")"
-    cp -f "$SOURCE_CSS" "$TARGET_CSS"
-    chmod 644 "$TARGET_CSS"
+    if [ -d "$(dirname "$TARGET_CSS")" ]; then
+        cp -f "$SOURCE_CSS" "$TARGET_CSS"
+        chmod 644 "$TARGET_CSS"
+    else
+        printf '%s\n' "HAWCMOX: Proxmox CSS directory was not found."
+    fi
 else
     printf '%s\n' "HAWCMOX: Source CSS file was not found."
 fi
@@ -296,16 +319,22 @@ fi
 if [ -f "$TEMPLATE_FILE" ]; then
     escaped_title="$(escape_sed_replacement "$BRAND_TITLE")"
 
-    if grep -q '<title>.*</title>' "$TEMPLATE_FILE"; then
+    if grep -q '<title>[^<]*</title>' "$TEMPLATE_FILE"; then
         sed -i \
             "s|<title>[^<]*</title>|<title>${escaped_title}</title>|" \
             "$TEMPLATE_FILE"
+    else
+        printf '%s\n' "HAWCMOX: No HTML title element was found."
     fi
 
     if ! grep -q 'css/hawcmox.css' "$TEMPLATE_FILE"; then
-        sed -i \
-            's|</head>|    <link rel="stylesheet" type="text/css" href="/pve2/css/hawcmox.css">\n</head>|' \
-            "$TEMPLATE_FILE"
+        if grep -q '</head>' "$TEMPLATE_FILE"; then
+            sed -i \
+                's|</head>|    <link rel="stylesheet" type="text/css" href="/pve2/css/hawcmox.css">\n</head>|' \
+                "$TEMPLATE_FILE"
+        else
+            printf '%s\n' "HAWCMOX: No closing HTML head element was found."
+        fi
     fi
 else
     printf '%s\n' "HAWCMOX: Proxmox HTML template was not found."
@@ -323,7 +352,7 @@ chmod 755 "$PATCH_SCRIPT"
 printf '%s\n' "[5/5] Applying the customization..."
 
 if [ "$INSTALL_APT_HOOK" = "yes" ]; then
-    cat > "$APT_HOOK" <<EOF_HOOK
+    cat > "$APT_HOOK" <<'EOF_HOOK'
 DPkg::Post-Invoke { "/usr/local/bin/hawcmox-patch.sh || true"; };
 EOF_HOOK
 
