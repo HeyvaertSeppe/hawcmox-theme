@@ -10,7 +10,7 @@
 set -eu
 
 DEFAULT_TITLE="HAWCMOX"
-DEFAULT_LOGO_URL="https://raw.githubusercontent.com/vopeyib179/hawcmox-theme/main/proxmox_logo.png"
+DEFAULT_LOGO_URL="https://raw.githubusercontent.com/HeyvaertSeppe/hawcmox-theme/main/proxmox_logo.png"
 
 DATA_DIR="/usr/local/share/hawcmox"
 PATCH_SCRIPT="/usr/local/bin/hawcmox-patch.sh"
