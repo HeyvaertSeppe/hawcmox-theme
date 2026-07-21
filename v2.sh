@@ -1,0 +1,300 @@
+#!/bin/sh
+
+# HAWCMOX Proxmox UI Manager - For Proxmox 9.2.2+
+# Unified script to Install or Remove the custom theme.
+
+set -eu
+
+DEFAULT_TITLE="HAWCMOX"
+DEFAULT_LOGO_URL="https://raw.githubusercontent.com/HeyvaertSeppe/hawcmox-theme/main/proxmox_logo.png"
+
+DATA_DIR="/usr/local/share/hawcmox"
+PATCH_SCRIPT="/usr/local/bin/hawcmox-patch.sh"
+APT_HOOK="/etc/apt/apt.conf.d/99hawcmox-theme"
+LOGO_FILE="$DATA_DIR/hawcmox_logo.png"
+CSS_FILE="$DATA_DIR/hawcmox.css"
+CONFIG_FILE="$DATA_DIR/config"
+
+if [ "$(id -u)" -ne 0 ]; then
+    printf '%s\n' "ERROR: This script must be run as root."
+    exit 1
+fi
+
+if [ ! -d "/usr/share/pve-manager" ]; then
+    printf '%s\n' "ERROR: This does not appear to be a Proxmox VE node."
+    exit 1
+fi
+
+ask_value() {
+    prompt="$1"
+    default_value="$2"
+    # IMPORTANT: the prompt must go to stderr, not stdout.
+    # Callers capture this function's output with $(...), which only
+    # captures stdout - if the prompt were printed on stdout too, it
+    # would get silently mixed into the returned value.
+    printf '%s [%s]: ' "$prompt" "$default_value" >&2
+    read -r answer || answer=""
+    [ -z "$answer" ] && answer="$default_value"
+    printf '%s' "$answer"
+}
+
+ask_yes_no() {
+    prompt="$1"
+    default_answer="$2"
+    while :; do
+        if [ "$default_answer" = "y" ]; then
+            printf '%s [Y/n]: ' "$prompt"
+        else
+            printf '%s [y/N]: ' "$prompt"
+        fi
+
+        read -r answer || answer=""
+        [ -z "$answer" ] && answer="$default_answer"
+
+        case "$answer" in
+            y|Y|yes|YES|Yes) return 0 ;;
+            n|N|no|NO|No) return 1 ;;
+            *) printf '%s\n' "Please answer yes or no." ;;
+        esac
+    done
+}
+
+download_file() {
+    url="$1"
+    destination="$2"
+    temporary_file="${destination}.download"
+    rm -f "$temporary_file"
+
+    if command -v curl >/dev/null 2>&1; then
+        if ! curl -4 --fail --location --silent --show-error --retry 3 "$url" --output "$temporary_file"; then
+            rm -f "$temporary_file"
+            printf '%s\n' "ERROR: Download failed (curl could not fetch $url)."
+            exit 1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if ! wget -4 --quiet --tries=3 --output-document="$temporary_file" "$url"; then
+            rm -f "$temporary_file"
+            printf '%s\n' "ERROR: Download failed (wget could not fetch $url)."
+            exit 1
+        fi
+    else
+        printf '%s\n' "ERROR: Neither curl nor wget is installed."
+        exit 1
+    fi
+
+    if [ ! -s "$temporary_file" ]; then
+        rm -f "$temporary_file"
+        printf '%s\n' "ERROR: Download failed. Check your URL."
+        exit 1
+    fi
+    mv "$temporary_file" "$destination"
+}
+
+install_theme() {
+    printf '\n============================================================\n'
+    printf ' HAWCMOX INSTALLER (Proxmox 9.2.2+)\n'
+    printf '============================================================\n'
+
+    BRAND_TITLE="$(ask_value "Browser title/brand name" "$DEFAULT_TITLE")"
+    printf '\n'
+    LOGO_URL="$(ask_value "Direct URL of the PNG logo" "$DEFAULT_LOGO_URL")"
+    printf '\n'
+
+    if ask_yes_no "Reapply automatically after package updates?" "y"; then
+        INSTALL_APT_HOOK="yes"
+    else
+        INSTALL_APT_HOOK="no"
+    fi
+
+    printf '\n'
+    if ! ask_yes_no "Apply these changes now?" "y"; then
+        printf '%s\n' "Installation cancelled."
+        exit 0
+    fi
+
+    printf '\n[1/5] Creating directories...\n'
+    mkdir -p "$DATA_DIR"
+    chmod 755 "$DATA_DIR"
+
+    printf '[2/5] Downloading custom logo...\n'
+    download_file "$LOGO_URL" "$LOGO_FILE"
+    chmod 644 "$LOGO_FILE"
+
+    printf '[3/5] Generating modern grey CSS theme...\n'
+    cat > "$CSS_FILE" <<'EOF_CSS'
+/* HAWCMOX - Modern Slate Proxmox Theme */
+
+.x-panel, .x-window, .x-panel-default, .x-window-default {
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    border: none !important;
+}
+
+.x-panel-header, .x-window-header {
+    border-radius: 8px 8px 0 0 !important;
+}
+
+.x-btn {
+    border-radius: 6px !important;
+    transition: opacity 0.2s ease-in-out !important;
+}
+
+.x-btn:hover {
+    opacity: 0.85 !important;
+}
+
+.x-form-text, .x-form-text-default {
+    border-radius: 4px !important;
+}
+
+/*
+ * The logo image itself is replaced by overwriting the real
+ * proxmox_logo.png file on disk (see hawcmox-patch.sh), so no
+ * CSS override/selector-matching hack is needed for that.
+ * This rule just keeps sizing consistent regardless of your
+ * custom logo's native dimensions.
+ */
+img[src*="proxmox_logo"] {
+    object-fit: contain !important;
+    height: 30px !important;
+    max-width: 150px !important;
+}
+EOF_CSS
+    chmod 644 "$CSS_FILE"
+    printf '%s\n' "$BRAND_TITLE" > "$CONFIG_FILE"
+
+    printf '[4/5] Creating persistent patcher...\n'
+    cat > "$PATCH_SCRIPT" <<'EOF_PATCH'
+#!/bin/sh
+set -eu
+
+DATA_DIR="/usr/local/share/hawcmox"
+CONFIG_FILE="$DATA_DIR/config"
+SOURCE_LOGO="$DATA_DIR/hawcmox_logo.png"
+SOURCE_CSS="$DATA_DIR/hawcmox.css"
+
+# Overwrite the *real* Proxmox logo file directly. This is what
+# proxmoxlib.js actually points <img src> at, so it is guaranteed
+# to show up - no CSS selector matching required.
+TARGET_LOGO="/usr/share/pve-manager/images/proxmox_logo.png"
+TARGET_LOGO_BACKUP="/usr/local/share/hawcmox/proxmox_logo.png.orig"
+TARGET_CSS="/usr/share/pve-manager/css/hawcmox.css"
+TEMPLATE_FILE="/usr/share/pve-manager/index.html.tpl"
+
+BRAND_TITLE="HAWCMOX"
+[ -s "$CONFIG_FILE" ] && BRAND_TITLE="$(head -n 1 "$CONFIG_FILE")"
+
+escape_sed_replacement() {
+    printf '%s' "$1" | sed 's/[\/&|\\]/\\&/g'
+}
+
+# Keep one copy of the original logo around the first time, purely
+# so it's easy to eyeball/restore manually if ever needed. (Full
+# restoration on uninstall is handled by reinstalling the package.)
+if [ -f "$TARGET_LOGO" ] && [ ! -f "$TARGET_LOGO_BACKUP" ]; then
+    cp -f "$TARGET_LOGO" "$TARGET_LOGO_BACKUP" 2>/dev/null || true
+fi
+
+[ -f "$SOURCE_LOGO" ] && cp -f "$SOURCE_LOGO" "$TARGET_LOGO" && chmod 644 "$TARGET_LOGO"
+[ -f "$SOURCE_CSS" ] && cp -f "$SOURCE_CSS" "$TARGET_CSS" && chmod 644 "$TARGET_CSS"
+
+if [ -f "$TEMPLATE_FILE" ]; then
+    escaped_title="$(escape_sed_replacement "$BRAND_TITLE")"
+    sed -i "s|<title>[^<]*</title>|<title>${escaped_title}</title>|" "$TEMPLATE_FILE"
+
+    if ! grep -q 'css/hawcmox.css' "$TEMPLATE_FILE"; then
+        sed -i 's|</head>|    <link rel="stylesheet" type="text/css" href="/pve2/css/hawcmox.css">\n</head>|' "$TEMPLATE_FILE"
+    fi
+
+    if ! grep -q 'HAWCMOX_TEXT_REMOVAL' "$TEMPLATE_FILE"; then
+        cat << 'EOF_JS' >> "$TEMPLATE_FILE"
+<!-- HAWCMOX_TEXT_REMOVAL -->
+<script type="text/javascript">
+document.addEventListener("DOMContentLoaded", function() {
+    // ExtJS repaints elements constantly. This interval acts as a silencer,
+    // ensuring the text stays removed even during interface refreshes.
+    setInterval(function() {
+        var headers = document.querySelectorAll('.x-toolbar-text, .x-title-text, .x-panel-header-text, span');
+        for (var i = 0; i < headers.length; i++) {
+            if (headers[i].innerHTML.includes('Virtual Environment')) {
+                headers[i].innerHTML = headers[i].innerHTML.replace(/Virtual Environment \d+\.\d+\.\d+/g, '');
+                headers[i].innerHTML = headers[i].innerHTML.replace('Virtual Environment', '');
+            }
+        }
+    }, 500);
+});
+</script>
+EOF_JS
+    fi
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart pveproxy.service >/dev/null 2>&1 || true
+fi
+EOF_PATCH
+    chmod 755 "$PATCH_SCRIPT"
+
+    printf '[5/5] Applying customization...\n'
+    if [ "$INSTALL_APT_HOOK" = "yes" ]; then
+        cat > "$APT_HOOK" <<'EOF_HOOK'
+DPkg::Post-Invoke { "/usr/local/bin/hawcmox-patch.sh || true"; };
+EOF_HOOK
+        chmod 644 "$APT_HOOK"
+    else
+        rm -f "$APT_HOOK"
+    fi
+
+    "$PATCH_SCRIPT"
+
+    printf '\n============================================================\n'
+    printf ' HAWCMOX INSTALLATION COMPLETE\n'
+    printf '============================================================\n\n'
+    printf 'IMPORTANT: The backend service has been reloaded.\n'
+    printf 'Open Proxmox in a brand new Incognito/Private window to bypass your cache and see the changes.\n'
+}
+
+uninstall_theme() {
+    printf '\n============================================================\n'
+    printf ' HAWCMOX UNINSTALLER\n'
+    printf '============================================================\n'
+
+    printf '[1/3] Removing HAWCMOX files and APT hooks...\n'
+    rm -rf "/usr/local/share/hawcmox"
+    rm -f "/usr/local/bin/hawcmox-patch.sh"
+    rm -f "/etc/apt/apt.conf.d/99hawcmox-theme"
+    rm -f "/usr/share/pve-manager/css/hawcmox.css"
+
+    printf '[2/3] Restoring original Proxmox HTML templates and logo...\n'
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install --reinstall pve-manager -y >/dev/null 2>&1
+
+    printf '[3/3] Restarting Proxmox web interface...\n'
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl restart pveproxy.service >/dev/null 2>&1 || true
+    fi
+
+    printf '\n============================================================\n'
+    printf ' REVERT COMPLETE\n'
+    printf '============================================================\n\n'
+    printf 'The server is now back to stock Proxmox defaults.\n'
+    printf 'Open Proxmox in an Incognito/Private window to verify.\n'
+}
+
+printf '\n============================================================\n'
+printf ' HAWCMOX UI MANAGER\n'
+printf '============================================================\n'
+printf ' 1) Install / Update HAWCMOX Theme\n'
+printf ' 2) Remove HAWCMOX Theme (Restore Default)\n'
+printf ' 3) Exit\n'
+printf '============================================================\n'
+printf 'Select an option [1-3]: '
+
+read -r choice || choice=""
+[ -z "$choice" ] && choice="1"
+
+case "$choice" in
+    1) install_theme ;;
+    2) uninstall_theme ;;
+    3) exit 0 ;;
+    *) printf 'Invalid choice. Exiting.\n'; exit 1 ;;
+esac
