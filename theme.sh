@@ -699,7 +699,7 @@ EOF_CSS
         if (throttleTimeout) return;
         throttleTimeout = setTimeout(function() {
             updateUI();
-            nudgeExtLayout();
+            //nudgeExtLayout();
             throttleTimeout = null;
         }, 50);
     });
