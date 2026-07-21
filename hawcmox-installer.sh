@@ -17,24 +17,34 @@ LOGO_FILE="$DATA_DIR/proxmox_logo.png"
 CSS_FILE="$DATA_DIR/hawcmox.css"
 CONFIG_FILE="$DATA_DIR/config"
 
+# Interactive input must come from the real terminal, because this script
+# is often run via: sh -c "$(curl -fsSL ...)"
+# In that case stdin is not the keyboard, so we read from /dev/tty instead.
+if [ ! -r /dev/tty ]; then
+    printf '%s\n' "ERROR: No interactive terminal (/dev/tty) is available."
+    printf '%s\n' "Download the script and run it directly instead:"
+    printf '%s\n' "  wget -O hawcmox-installer.sh <RAW_URL>"
+    printf '%s\n' "  chmod +x hawcmox-installer.sh"
+    printf '%s\n' "  ./hawcmox-installer.sh"
+    exit 1
+fi
+
 print_header() {
-    printf '\n'
-    printf '%s\n' "============================================================"
-    printf '%s\n' " HAWCMOX Proxmox UI Customization Installer"
-    printf '%s\n' "============================================================"
-    printf '%s\n' "This script changes only the Proxmox title, logo, and theme."
-    printf '%s\n' "It does not modify licensing, subscriptions, or repositories."
-    printf '\n'
+    printf '\n' > /dev/tty
+    printf '%s\n' "============================================================" > /dev/tty
+    printf '%s\n' " HAWCMOX Proxmox UI Customization Installer" > /dev/tty
+    printf '%s\n' "============================================================" > /dev/tty
+    printf '%s\n' "This script changes only the Proxmox title, logo, and theme." > /dev/tty
+    printf '%s\n' "It does not modify licensing, subscriptions, or repositories." > /dev/tty
+    printf '\n' > /dev/tty
 }
 
 ask_value() {
     prompt="$1"
     default_value="$2"
 
-    # Send the prompt to stderr so command substitution captures only
-    # the value returned by this function.
-    printf '%s [%s]: ' "$prompt" "$default_value" >&2
-    IFS= read -r answer || answer=""
+    printf '%s [%s]: ' "$prompt" "$default_value" > /dev/tty
+    IFS= read -r answer < /dev/tty || answer=""
 
     if [ -z "$answer" ]; then
         answer="$default_value"
@@ -49,12 +59,12 @@ ask_yes_no() {
 
     while :; do
         if [ "$default_answer" = "y" ]; then
-            printf '%s [Y/n]: ' "$prompt" >&2
+            printf '%s [Y/n]: ' "$prompt" > /dev/tty
         else
-            printf '%s [y/N]: ' "$prompt" >&2
+            printf '%s [y/N]: ' "$prompt" > /dev/tty
         fi
 
-        IFS= read -r answer || answer=""
+        IFS= read -r answer < /dev/tty || answer=""
 
         if [ -z "$answer" ]; then
             answer="$default_answer"
@@ -68,7 +78,7 @@ ask_yes_no() {
                 return 1
                 ;;
             *)
-                printf '%s\n' "Please answer yes or no." >&2
+                printf '%s\n' "Please answer yes or no." > /dev/tty
                 ;;
         esac
     done
@@ -86,6 +96,7 @@ download_file() {
             ;;
         *)
             printf '%s\n' "ERROR: The logo URL must start with http:// or https://"
+            printf '%s\n' "You entered: $url"
             exit 1
             ;;
     esac
@@ -132,16 +143,14 @@ if [ ! -d "/usr/share/pve-manager" ]; then
     exit 1
 fi
 
-printf '%s\n' "Enter the desired customization settings."
-printf '%s\n' "Press Enter to accept a value shown between brackets."
-printf '\n'
+printf '%s\n' "Enter the desired customization settings." > /dev/tty
+printf '%s\n' "Press Enter to accept the value shown in brackets." > /dev/tty
+printf '\n' > /dev/tty
 
 BRAND_TITLE="$(ask_value "Browser title/brand name" "$DEFAULT_TITLE")"
-printf '\n'
-
 LOGO_URL="$(ask_value "Direct URL of the PNG logo" "$DEFAULT_LOGO_URL")"
-printf '\n\n'
 
+printf '\n' > /dev/tty
 if ask_yes_no \
     "Reapply the customization automatically after package updates?" \
     "y"
@@ -151,12 +160,12 @@ else
     INSTALL_APT_HOOK="no"
 fi
 
-printf '\n'
-printf '%s\n' "Customization summary:"
-printf '  Title:           %s\n' "$BRAND_TITLE"
-printf '  Logo URL:        %s\n' "$LOGO_URL"
-printf '  Persistent hook: %s\n' "$INSTALL_APT_HOOK"
-printf '\n'
+printf '\n' > /dev/tty
+printf '%s\n' "Customization summary:" > /dev/tty
+printf '  Title:           %s\n' "$BRAND_TITLE" > /dev/tty
+printf '  Logo URL:        %s\n' "$LOGO_URL" > /dev/tty
+printf '  Persistent hook: %s\n' "$INSTALL_APT_HOOK" > /dev/tty
+printf '\n' > /dev/tty
 
 if ! ask_yes_no "Apply these changes now?" "y"; then
     printf '%s\n' "Installation cancelled."
