@@ -1,12 +1,9 @@
 #!/bin/sh
 
-# HAWCMOX Proxmox UI Manager v6.0 - For Proxmox 8+ and 9.2.2+
+# HAWCMOX Proxmox UI Manager v6.1 - For Proxmox 8+ and 9.2.2+
 # Unified script to Install or Remove the custom theme and remove nags.
 
 set -eu
-
-DEFAULT_TITLE="HAWCMOX"
-DEFAULT_LOGO_URL="https://raw.githubusercontent.com/HeyvaertSeppe/hawcmox-theme/main/proxmox_logo.png"
 
 DATA_DIR="/usr/local/share/hawcmox"
 PATCH_SCRIPT="/usr/local/bin/hawcmox-patch.sh"
@@ -29,36 +26,6 @@ if [ ! -d "/usr/share/pve-manager" ]; then
     printf '%s\n' "ERROR: This does not appear to be a Proxmox VE node."
     exit 1
 fi
-
-ask_value() {
-    prompt="$1"
-    default_value="$2"
-    printf '%s [%s]: ' "$prompt" "$default_value" >&2
-    read -r answer || answer=""
-    [ -z "$answer" ] && answer="$default_value"
-    printf '%s' "$answer"
-}
-
-ask_yes_no() {
-    prompt="$1"
-    default_answer="$2"
-    while :; do
-        if [ "$default_answer" = "y" ]; then
-            printf '%s [Y/n]: ' "$prompt"
-        else
-            printf '%s [y/N]: ' "$prompt"
-        fi
-
-        read -r answer || answer=""
-        [ -z "$answer" ] && answer="$default_answer"
-
-        case "$answer" in
-            y|Y|yes|YES|Yes) return 0 ;;
-            n|N|no|NO|No) return 1 ;;
-            *) printf '%s\n' "Please answer yes or no." ;;
-        esac
-    done
-}
 
 download_file() {
     url="$1"
@@ -110,7 +77,6 @@ prepare_logo_svg() {
         width="200"
         height="60"
         mime="image/*"
-        printf '%s\n' "NOTE: logo isn't SVG or PNG - using a generic aspect ratio. For a pixel-perfect fit, use a .svg or .png source image."
     fi
 
     b64="$(base64 -w0 "$raw_file" 2>/dev/null || base64 "$raw_file" | tr -d '\n')"
@@ -127,29 +93,10 @@ install_theme() {
     printf ' HAWCMOX INSTALLER\n'
     printf '============================================================\n'
 
-    BRAND_TITLE="$(ask_value "Browser title/brand name" "$DEFAULT_TITLE")"
-    printf '\n'
-    LOGO_URL="$(ask_value "Direct URL of the logo (SVG or PNG)" "$DEFAULT_LOGO_URL")"
-    printf '\n'
-
-    if ask_yes_no "Reapply automatically after package updates?" "y"; then
-        INSTALL_APT_HOOK="yes"
-    else
-        INSTALL_APT_HOOK="no"
-    fi
-
-    printf '\n'
-    if ask_yes_no "Hide the startup 'No valid subscription' popup?" "y"; then
-        HIDE_NAG="yes"
-    else
-        HIDE_NAG="no"
-    fi
-
-    printf '\n'
-    if ! ask_yes_no "Apply these changes now?" "y"; then
-        printf '%s\n' "Installation cancelled."
-        exit 0
-    fi
+    BRAND_TITLE="HAWCMOX"
+    LOGO_URL="https://raw.githubusercontent.com/HeyvaertSeppe/hawcmox-theme/main/proxmox_logo.png"
+    INSTALL_APT_HOOK="yes"
+    HIDE_NAG="yes"
 
     printf '\n[1/7] Creating directories...\n'
     mkdir -p "$DATA_DIR"
@@ -198,7 +145,6 @@ html, body, .x-viewport, .x-body {
     background: var(--hawc-bg) !important;
 }
 
-/* Removed border, border-radius, and gradients for windows and panels */
 .x-panel, .x-window, .x-panel-default, .x-window-default {
     background: var(--hawc-panel) !important;
     border: none !important;
@@ -224,7 +170,6 @@ html, body, .x-viewport, .x-body {
     border: none !important;
 }
 
-/* Base toolbar styling */
 .x-toolbar {
     background: var(--hawc-panel-alt) !important;
     border: none !important;
@@ -247,7 +192,6 @@ html, body, .x-viewport, .x-body {
     overflow: visible !important;
 }
 
-/* Clean background for the main top banner area */
 .x-plain-body:has(img[src*="proxmox_logo"]) {
     background: var(--hawc-bg) !important;
     overflow: visible !important;
@@ -259,7 +203,6 @@ a:has(img[src*="proxmox_logo"]) {
     overflow: visible !important;
 }
 
-/* --- Buttons (default/neutral) --- */
 .x-btn {
     border-radius: var(--hawc-radius-sm) !important;
     transition: background-color 0.15s ease, opacity 0.15s ease !important;
@@ -330,7 +273,6 @@ a:has(img[src*="proxmox_logo"]) {
     opacity: 1 !important;
 }
 
-/* --- Inputs --- */
 .x-form-text, .x-form-text-default, .x-form-field {
     background: var(--hawc-panel-alt) !important;
     border: 1px solid var(--hawc-border) !important;
@@ -343,7 +285,6 @@ a:has(img[src*="proxmox_logo"]) {
     border-color: var(--hawc-accent) !important;
 }
 
-/* --- Tabs --- */
 .x-tab {
     border-radius: var(--hawc-radius-sm) var(--hawc-radius-sm) 0 0 !important;
     background: var(--hawc-panel) !important;
@@ -355,7 +296,6 @@ a:has(img[src*="proxmox_logo"]) {
     color: var(--hawc-text) !important;
 }
 
-/* --- Grids / trees --- */
 .x-grid-header-ct, .x-column-header {
     background: var(--hawc-panel-alt) !important;
     color: var(--hawc-text) !important;
@@ -371,7 +311,6 @@ a:has(img[src*="proxmox_logo"]) {
     background: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* --- Dropdown menus / autocomplete lists --- */
 .x-menu, .x-boundlist {
     background: var(--hawc-bg) !important;
     border: none !important;
@@ -385,7 +324,6 @@ a:has(img[src*="proxmox_logo"]) {
     background: var(--hawc-accent) !important;
 }
 
-/* --- Scrollbars --- */
 ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -401,7 +339,6 @@ a:has(img[src*="proxmox_logo"]) {
     background: var(--hawc-accent);
 }
 
-/* --- Rounded panel and content restoration --- */
 .x-panel,
 .x-window,
 .x-panel-default,
@@ -448,7 +385,6 @@ a:has(img[src*="proxmox_logo"]) {
   color: #ffffff !important;
 }
 
-/* --- Resource tree layout fixes --- */
 [id^="container-"][style*="left: 5px"],
 .x-container.x-border-item.x-box-item.x-container-default.x-box-layout-ct[style*="left: 5px"] {
   top: 69px !important;
@@ -513,7 +449,6 @@ a:has(img[src*="proxmox_logo"]) {
   border: 0 !important;
 }
 
-/* --- Menu/list flat styling fixes --- */
 .x-boundlist,
 .x-menu,
 .x-menu-body,
@@ -564,7 +499,6 @@ a:has(img[src*="proxmox_logo"]) {
   border-radius: 0 !important;
 }
 
-/* --- Left and middle navigation colors --- */
 [id^="pveResourceTree-"] .x-grid-row-over .x-grid-cell,
 [id^="pveResourceTree-"] .x-grid-row:hover .x-grid-cell,
 [id^="pveResourceTree-"] .x-grid-item-over .x-grid-cell,
@@ -632,7 +566,6 @@ a:has(img[src*="proxmox_logo"]) {
   color: var(--hawc-nav-active-text) !important;
 }
 
-/* --- Treelist theme to match left navigation --- */
 .x-treelist,
 .x-treelist-root-container,
 .x-treelist-container,
@@ -676,7 +609,6 @@ a:has(img[src*="proxmox_logo"]) {
   color: var(--hawc-nav-active-text) !important;
 }
 
-/* --- Left/middle divider and spacing fixes --- */
 .x-border-layout-ct,
 .x-border-layout-ct > .x-box-inner,
 .x-border-layout-ct > .x-box-inner > .x-box-target,
@@ -699,7 +631,6 @@ a:has(img[src*="proxmox_logo"]) {
   border: 0 !important;
 }
 
-/* --- Support panel cards --- */
 .hawc-subscription-card {
   display: flex !important;
   flex-direction: column !important;
@@ -755,13 +686,10 @@ a:has(img[src*="proxmox_logo"]) {
   color: #ffffff !important;
 }
 
-
-/* --- Exact Server View and Gear Icon Spacing fix --- */
 #view {
   width: 235px !important;
 }
 
-/* Target the specific gear icon button dynamically by checking for its icon content */
 #view ~ .x-btn,
 .x-btn:has(.fa-gear) {
   position: absolute !important;
@@ -777,8 +705,6 @@ a:has(img[src*="proxmox_logo"]) {
   opacity: 1 !important;
 }
 
-
-/* --- Overlapping Logo Implementation --- */
 img[src*="proxmox_logo"] {
     object-fit: contain !important;
     height: 55px !important;
@@ -895,7 +821,6 @@ EOF_CSS
       for (var i = 0; i < targets.length; i++) {
         var el = targets[i];
         
-        // Anti-freeze mechanism: prevents infinite loops by not modifying an element we already touched
         if (el.getAttribute('data-hawc-card') === 'done') continue;
         
         var txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
@@ -928,11 +853,44 @@ EOF_CSS
         }
     }
 
+    function addSupportHeaderButton() {
+        if (document.getElementById('hawc-support-btn')) return;
+
+        var spans = document.querySelectorAll('.x-btn-inner');
+        var docBtn = null;
+        for (var i = 0; i < spans.length; i++) {
+            if (spans[i].textContent.trim() === 'Documentation') {
+                docBtn = spans[i].closest('.x-btn');
+                break;
+            }
+        }
+
+        if (docBtn && docBtn.parentNode) {
+            var clone = docBtn.cloneNode(true);
+            clone.id = 'hawc-support-btn';
+            
+            var inner = clone.querySelector('.x-btn-inner');
+            if (inner) inner.textContent = 'Support';
+            
+            var icon = clone.querySelector('.x-btn-icon-el');
+            if (icon) icon.className = 'x-btn-icon-el x-btn-icon-el-default-toolbar-small fa fa-life-ring';
+
+            clone.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.location.hash = '#v1:0:=dc/root:pveDcSupport';
+            });
+
+            docBtn.parentNode.insertBefore(clone, docBtn);
+        }
+    }
+
     function processRoot(root) {
         walkText(root);
         tagAllButtons(root);
         replaceSupportPanels(root);
         dismissSubscriptionNag(root);
+        addSupportHeaderButton();
     }
 
     function init() {
@@ -1040,9 +998,7 @@ if [ -f "$SUBLIB_FILE" ]; then
         if [ -f "$SUBLIB_BACKUP" ]; then
             cp -f "$SUBLIB_BACKUP" "$SUBLIB_FILE"
         fi
-        # Correctly disables nag for newer PVE8+ releases
         sed -i "s/res === null || res === undefined || \!res || res.data.status.toLowerCase() !== 'active'/false/g" "$SUBLIB_FILE" 2>/dev/null || true
-        # Legacy fallback
         sed -i "s/res === null || res === undefined || \!res || res/false/g" "$SUBLIB_FILE" 2>/dev/null || true
     else
         if [ -f "$SUBLIB_BACKUP" ]; then
