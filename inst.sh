@@ -341,14 +341,14 @@ img[src*="proxmox_logo"] {
 /* ------------------------------------------------------------------- */
 
 
-/* --- EXACT FIX: Push down Left Navigation Menu --- */
+
 .x-container.x-border-item.x-box-item[style*="left: 5px"],
 div[id^="container-"][style*="left: 5px"] {
     top: 69px !important;
 }
 
 div[id^="pveResourceTree-"][id$="-body"] {
-    height: 600px !important;
+    height: calc(100% - 58px) !important;
 }
 /* ------------------------------------------------------------------- */
 
