@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# HAWCMOX Proxmox UI Manager v6.2 - For Proxmox 8+ and 9.2.2+
+# HAWCMOX Proxmox UI Manager v6.3 - For Proxmox 8+ and 9.2.2+
 # Unified automated script to Install or Remove the custom theme.
 
 set -eu
@@ -292,12 +292,24 @@ a:has(img[src*="proxmox_logo"]) {
     opacity: 1 !important;
 }
 
+/* --- Ensure strictly sharp 0px radius for all inputs, search bars, and dropdown menus --- */
 .x-form-text, .x-form-text-default, .x-form-field {
     background: var(--hawc-panel-alt) !important;
     border: 1px solid var(--hawc-border) !important;
-    border-radius: var(--hawc-radius-sm) !important;
+    border-radius: 0 !important;
     color: var(--hawc-text) !important;
 }
+
+.x-menu, .x-boundlist {
+    background: var(--hawc-bg) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+    overflow: hidden !important;
+    background-image: none !important;
+}
+/* ---------------------------------------------------------------------------------------- */
+
 
 .x-form-trigger-wrap-focus .x-form-text,
 .x-form-text-focus {
@@ -330,14 +342,6 @@ a:has(img[src*="proxmox_logo"]) {
     background: rgba(255, 255, 255, 0.08) !important;
 }
 
-.x-menu, .x-boundlist {
-    background: var(--hawc-bg) !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
-    overflow: hidden !important;
-    background-image: none !important;
-}
 
 .x-boundlist-item-over {
     background: var(--hawc-accent) !important;
@@ -444,7 +448,6 @@ a:has(img[src*="proxmox_logo"]) {
 
 .x-border-layout-ct,
 .x-panel.x-border-item,
-.x-splitter,
 .x-border-region,
 .x-panel-default-outer-border-l,
 .x-panel-default-outer-border-r {
@@ -452,14 +455,6 @@ a:has(img[src*="proxmox_logo"]) {
   gap: 0 !important;
 }
 
-.x-splitter,
-.x-splitter-vertical {
-  width: 2px !important;
-  min-width: 2px !important;
-  max-width: 2px !important;
-  background: var(--hawc-border) !important;
-  border: 0 !important;
-}
 
 .x-boundlist,
 .x-menu,
@@ -621,7 +616,6 @@ a:has(img[src*="proxmox_logo"]) {
   color: var(--hawc-nav-active-text) !important;
 }
 
-.x-border-layout-ct,
 .x-border-layout-ct > .x-box-inner,
 .x-border-layout-ct > .x-box-inner > .x-box-target,
 .x-border-layout-ct .x-box-target,
@@ -631,7 +625,7 @@ a:has(img[src*="proxmox_logo"]) {
   row-gap: 0 !important;
 }
 
-.x-border-layout-ct .x-splitter,
+/* Fix splitter constraints to ONLY apply to the vertical one (fixing the bottom arrow) */
 .x-border-layout-ct .x-splitter-vertical {
   width: 1px !important;
   min-width: 1px !important;
@@ -642,6 +636,7 @@ a:has(img[src*="proxmox_logo"]) {
   background: var(--hawc-border) !important;
   border: 0 !important;
 }
+
 
 .hawc-subscription-card {
   display: flex !important;
@@ -741,10 +736,6 @@ EOF_CSS
     printf '[4/7] Generating UI patcher script...\n'
     cat > "$JS_FILE" <<'EOF_JS'
 (function () {
-    var TEXT_REPLACEMENTS = [
-        { re: /Virtual Environment\s*[\d.]*\s*/g, to: '' }
-    ];
-
     var ACTION_MAP = [
         { re: /^create\s*vm$/i, action: 'create-vm' },
         { re: /^create\s*ct$/i, action: 'create-ct' },
@@ -759,15 +750,17 @@ EOF_CSS
 
     function processTextNode(node) {
         var data = node.data;
-        var changed = false;
-        for (var i = 0; i < TEXT_REPLACEMENTS.length; i++) {
-            if (TEXT_REPLACEMENTS[i].re.test(data)) {
-                data = data.replace(TEXT_REPLACEMENTS[i].re, TEXT_REPLACEMENTS[i].to);
-                changed = true;
+        
+        // Formats "Virtual Environment 9.2.2" to small, light-grey "VE v9.2.2" beside search
+        if (/Virtual Environment\s*([\d.]+)/i.test(data)) {
+            var p = node.parentNode;
+            if (p) {
+                p.style.setProperty('font-size', '11px', 'important');
+                p.style.setProperty('color', '#a4acb8', 'important');
+                p.style.setProperty('margin-right', '12px', 'important');
             }
-        }
-        if (changed) {
-            node.data = data.trim();
+            node.data = data.replace(/Virtual Environment\s*([\d.]+)\s*/gi, 'VE v$1');
+            return;
         }
     }
 
@@ -865,32 +858,30 @@ EOF_CSS
         }
     }
 
-    function transformDocumentationToSupport() {
+    function injectSupportButton() {
+        if (document.getElementById('hawc-support-btn')) return;
         var spans = document.querySelectorAll('.x-btn-inner');
         for (var i = 0; i < spans.length; i++) {
             if (spans[i].textContent.trim() === 'Documentation') {
                 var docBtn = spans[i].closest('.x-btn');
-                
                 if (docBtn && docBtn.getAttribute('data-hawc-support') !== 'done') {
-                    // Change text to Support
-                    spans[i].textContent = 'Support';
                     
-                    // Replace the book icon with a life-ring safely
-                    var icon = docBtn.querySelector('.x-btn-icon-el');
-                    if (icon) {
-                        icon.className = icon.className.replace(/fa-[a-z-]+/g, '') + ' fa-life-ring';
-                    }
-                    
-                    // Intercept the click to send it to the Support panel instead of opening docs
-                    docBtn.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.stopImmediatePropagation();
-                        window.location.hash = '#v1:0:=dc/root:pveDcSupport';
-                    }, true);
-                    
-                    // Prevent this from running twice on the same button
+                    // Hide original documentation button
+                    docBtn.style.setProperty('display', 'none', 'important');
                     docBtn.setAttribute('data-hawc-support', 'done');
+                    
+                    // Create an identical looking HTML anchor that natively routes to Datacenter -> Support
+                    var a = document.createElement('a');
+                    a.id = 'hawc-support-btn';
+                    a.href = '#v1:0:=dc/root:pveDcSupport';
+                    a.className = docBtn.className;
+                    a.style.cssText = docBtn.style.cssText;
+                    a.style.display = 'inline-block';
+                    a.style.textDecoration = 'none';
+                    a.innerHTML = '<span class="x-btn-wrap" style="display:flex; align-items:center; gap:6px;"><span class="x-btn-icon-el x-btn-icon-el-default-toolbar-small fa fa-life-ring" style="color:#ffffff;"></span><span class="x-btn-inner x-btn-inner-default-toolbar-small" style="color:#ffffff;">Support</span></span>';
+                    
+                    // Insert safely next to it
+                    docBtn.parentNode.insertBefore(a, docBtn);
                 }
                 break;
             }
@@ -902,7 +893,7 @@ EOF_CSS
         tagAllButtons(root);
         replaceSupportPanels(root);
         dismissSubscriptionNag(root);
-        transformDocumentationToSupport();
+        injectSupportButton();
     }
 
     function init() {
