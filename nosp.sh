@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# HAWCMOX Proxmox UI Manager v6.1 - For Proxmox 8+ and 9.2.2+
-# Unified script to Install or Remove the custom theme and remove nags.
+# HAWCMOX Proxmox UI Manager v6.2 - For Proxmox 8+ and 9.2.2+
+# Unified automated script to Install or Remove the custom theme.
 
 set -eu
 
@@ -145,14 +145,33 @@ html, body, .x-viewport, .x-body {
     background: var(--hawc-bg) !important;
 }
 
-.x-panel, .x-window, .x-panel-default, .x-window-default {
+.x-panel, .x-panel-default {
     background: var(--hawc-panel) !important;
     border: none !important;
     border-radius: 0 !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: none !important;
     overflow: hidden !important;
     background-image: none !important;
 }
+
+/* --- Fully flatten popup windows (Create VM / Create CT) --- */
+.x-window, .x-window-default {
+    background: var(--hawc-panel) !important;
+    border: 1px solid var(--hawc-border) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important; 
+    background-image: none !important;
+}
+
+.x-window .x-panel,
+.x-window .x-panel-body,
+.x-window .x-panel-header,
+.x-window .x-form-item,
+.x-window .x-container {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+/* ----------------------------------------------------------- */
 
 .x-panel-header, .x-window-header,
 .x-panel-header-default, .x-window-header-default {
@@ -340,9 +359,6 @@ a:has(img[src*="proxmox_logo"]) {
 }
 
 .x-panel,
-.x-window,
-.x-panel-default,
-.x-window-default,
 .x-grid,
 .x-tree-panel,
 .x-tabpanel-child,
@@ -352,16 +368,12 @@ a:has(img[src*="proxmox_logo"]) {
 }
 
 .x-panel-header,
-.x-window-header,
-.x-panel-header-default,
-.x-window-header-default {
+.x-panel-header-default {
   border-radius: var(--hawc-radius) var(--hawc-radius) 0 0 !important;
 }
 
 .x-panel-body,
-.x-window-body,
 .x-panel-body-default,
-.x-window-body-default,
 .x-grid-body,
 .x-grid-body-default {
   border-radius: 0 0 var(--hawc-radius) var(--hawc-radius) !important;
@@ -853,35 +865,35 @@ EOF_CSS
         }
     }
 
-    function addSupportHeaderButton() {
-        if (document.getElementById('hawc-support-btn')) return;
-
+    function transformDocumentationToSupport() {
         var spans = document.querySelectorAll('.x-btn-inner');
-        var docBtn = null;
         for (var i = 0; i < spans.length; i++) {
             if (spans[i].textContent.trim() === 'Documentation') {
-                docBtn = spans[i].closest('.x-btn');
+                var docBtn = spans[i].closest('.x-btn');
+                
+                if (docBtn && docBtn.getAttribute('data-hawc-support') !== 'done') {
+                    // Change text to Support
+                    spans[i].textContent = 'Support';
+                    
+                    // Replace the book icon with a life-ring safely
+                    var icon = docBtn.querySelector('.x-btn-icon-el');
+                    if (icon) {
+                        icon.className = icon.className.replace(/fa-[a-z-]+/g, '') + ' fa-life-ring';
+                    }
+                    
+                    // Intercept the click to send it to the Support panel instead of opening docs
+                    docBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        window.location.hash = '#v1:0:=dc/root:pveDcSupport';
+                    }, true);
+                    
+                    // Prevent this from running twice on the same button
+                    docBtn.setAttribute('data-hawc-support', 'done');
+                }
                 break;
             }
-        }
-
-        if (docBtn && docBtn.parentNode) {
-            var clone = docBtn.cloneNode(true);
-            clone.id = 'hawc-support-btn';
-            
-            var inner = clone.querySelector('.x-btn-inner');
-            if (inner) inner.textContent = 'Support';
-            
-            var icon = clone.querySelector('.x-btn-icon-el');
-            if (icon) icon.className = 'x-btn-icon-el x-btn-icon-el-default-toolbar-small fa fa-life-ring';
-
-            clone.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                window.location.hash = '#v1:0:=dc/root:pveDcSupport';
-            });
-
-            docBtn.parentNode.insertBefore(clone, docBtn);
         }
     }
 
@@ -890,7 +902,7 @@ EOF_CSS
         tagAllButtons(root);
         replaceSupportPanels(root);
         dismissSubscriptionNag(root);
-        addSupportHeaderButton();
+        transformDocumentationToSupport();
     }
 
     function init() {
@@ -948,12 +960,12 @@ SUBLIB_FILE="/usr/share/javascript/proxmox-widget-toolkit/js/proxmoxlib.js"
 SUBLIB_BACKUP="$DATA_DIR/proxmoxlib.js.orig"
 
 BRAND_TITLE="HAWCMOX"
-HIDE_NAG="no"
+HIDE_NAG="yes"
 if [ -s "$CONFIG_FILE" ]; then
     BRAND_TITLE="$(sed -n '1p' "$CONFIG_FILE")"
     HIDE_NAG="$(sed -n '2p' "$CONFIG_FILE")"
     [ -z "$BRAND_TITLE" ] && BRAND_TITLE="HAWCMOX"
-    [ -z "$HIDE_NAG" ] && HIDE_NAG="no"
+    [ -z "$HIDE_NAG" ] && HIDE_NAG="yes"
 fi
 
 escape_sed_replacement() {
