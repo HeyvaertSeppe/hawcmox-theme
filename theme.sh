@@ -336,7 +336,7 @@ img[src*="proxmox_logo"] {
     top: 0 !important;
     left: 0 !important;
     margin-top: 10px !important;
-    margin-left: 20px !important;
+    margin-left: 35px !important;
 }
 /* ------------------------------------------------------------------- */
 
@@ -548,7 +548,7 @@ div[id^="pveResourceTree-"][id$="-body"] {
     font-size: 12px !important;
     line-height: 20px !important;
     padding: 0px 5px !important;
-    left: 287px !important;
+    left: 301px !important;
     height: 20px !important;
     margin: 0px !important;
     top: 10px !important;
